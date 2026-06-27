@@ -93,6 +93,26 @@
 
   .count-line{ font-size:12px; color:var(--ink-soft); margin:2px 4px 10px; }
 
+  .link-btn{
+    background:none; border:none; color:var(--indigo); font-size:12.5px; font-weight:600;
+    cursor:pointer; padding:2px 4px 10px; text-decoration:underline; text-underline-offset:2px;
+  }
+
+  /* ── 業種管理画面 ───────────────────────── */
+  .cat-manage-row{
+    display:flex; align-items:center; gap:10px; background:var(--surface);
+    border:1px solid var(--line); border-radius:var(--radius-s); padding:10px 12px; margin-bottom:8px;
+  }
+  .cat-manage-row input{
+    flex:1; border:none; background:transparent; font-size:14.5px; color:var(--ink); outline:none;
+  }
+  .cat-manage-row.locked input{ color:var(--ink-soft); }
+  .cat-manage-row.locked .lock-note{ font-size:11px; color:var(--ink-soft); white-space:nowrap; }
+  .cat-del{
+    width:28px; height:28px; border-radius:50%; border:none; flex:0 0 auto;
+    background:var(--surface-2); color:var(--ink-soft); cursor:pointer; font-size:13px;
+  }
+
   /* ── グループ見出し ─────────────────────── */
   .group-header{
     font-family:var(--serif); font-size:13px; font-weight:700; color:var(--indigo);
@@ -238,6 +258,7 @@
       </div>
     </div>
     <div class="chip-row" id="category-chips"></div>
+    <button class="link-btn" id="manage-categories-btn" type="button">⚙ 業種を編集する</button>
     <div class="count-line" id="count-line"></div>
     <div id="list-container"></div>
   </section>
@@ -324,6 +345,22 @@
     </div>
   </section>
 
+  <!-- ════════════ 業種管理画面 ════════════ -->
+  <section id="view-categories" class="view">
+    <div class="form-header">
+      <button class="back-btn" id="categories-back" type="button">←</button>
+      <h2>業種を編集</h2>
+    </div>
+    <div id="category-manage-list"></div>
+    <div class="field" style="margin-top:18px;">
+      <label>新しい業種を追加</label>
+      <div style="display:flex;gap:8px;">
+        <input type="text" id="new-category-input" placeholder="例）生花" style="flex:1;padding:11px 13px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);outline:none;">
+        <button class="btn btn-secondary" id="add-category-btn" type="button">追加</button>
+      </div>
+    </div>
+  </section>
+
 </main>
 
 <button class="fab" id="fab-add" type="button">
@@ -353,12 +390,27 @@ const CONFIG = {
   // Google Apps Script のウェブアプリURLをここに貼り付けると、
   // 全スタッフ・全端末で共有されるGoogleスプレッドシート保存に切り替わります。
   // 未設定のままならこの端末のブラウザ内保存のみで動作します。
-  SHEETS_API_URL: 'https://script.google.com/macros/s/AKfycbx68KE_SL5wLM0ozWi8klujz2YEb1FtrAATTVys5ZzBDW5ij5QtX-O14M5l9fj7uyQ_/exec'
+  SHEETS_API_URL: 'https://script.google.com/macros/s/AKfycbx68KE_SL5wLM0ozWi8klujz2YEb1FtrAATTVys5ZzBDW5ij5QtX-O14M5l9fj7uyQ_/exec
+'
 };
 
-const CATEGORIES = ['食材','酒類・飲料','クリーニング','設備・メンテナンス','印刷・備品','IT・システム','旅行代理店・OTA','工事・内装','その他'];
+const DEFAULT_CATEGORIES = ['食材','酒類・飲料','クリーニング','設備・メンテナンス','印刷・備品','IT・システム','旅行代理店・OTA','工事・内装','その他'];
 const ORDER_METHODS = ['電話','FAX','メール','Web発注','訪問時に直接'];
 const LOCAL_KEY = 'asukaso_vendor_notes_v1';
+const CATEGORY_KEY = 'asukaso_vendor_categories_v1';
+const FALLBACK_CATEGORY = 'その他'; // 削除時の振り分け先。この業種自体は削除不可
+
+function loadCategories(){
+  try{
+    const saved = JSON.parse(localStorage.getItem(CATEGORY_KEY) || 'null');
+    if(Array.isArray(saved) && saved.length) return saved;
+  }catch(e){ /* 何もしない: デフォルトにフォールバック */ }
+  return [...DEFAULT_CATEGORIES];
+}
+function saveCategories(){
+  localStorage.setItem(CATEGORY_KEY, JSON.stringify(CATEGORIES));
+}
+let CATEGORIES = loadCategories();
 
 /* ════════════════════════════════════════════════════════════
    DataStore抽象化レイヤー
@@ -781,6 +833,86 @@ document.getElementById('vendor-form').addEventListener('submit', async (e) => {
   await refreshAndRenderList();
   showView('view-list');
 });
+
+/* ════════════════════════════════════════════════════════════
+   業種管理画面(追加・名称変更・削除)
+   ════════════════════════════════════════════════════════════ */
+async function renameCategoryInVendors(oldName, newName){
+  const targets = allVendors.filter(v => (v.category || FALLBACK_CATEGORY) === oldName);
+  for(const v of targets){
+    v.category = newName;
+    await DataStore.update(v);
+  }
+  allVendors = await DataStore.getAll();
+}
+
+function renderCategoryManageList(){
+  const wrap = document.getElementById('category-manage-list');
+  wrap.innerHTML = CATEGORIES.map((c, i) => `
+    <div class="cat-manage-row ${c === FALLBACK_CATEGORY ? 'locked' : ''}">
+      <input type="text" value="${escapeHtml(c)}" data-index="${i}" data-original="${escapeHtml(c)}" ${c === FALLBACK_CATEGORY ? 'disabled' : ''}>
+      ${c === FALLBACK_CATEGORY
+        ? '<span class="lock-note">削除不可（既定の分類）</span>'
+        : `<button class="cat-del" data-cat="${escapeHtml(c)}" type="button" title="削除">✕</button>`}
+    </div>
+  `).join('');
+
+  wrap.querySelectorAll('input[data-index]').forEach(input => {
+    input.addEventListener('change', async () => {
+      const oldName = input.dataset.original;
+      const newName = input.value.trim();
+      if(!newName){ showToast('業種名を入力してください'); input.value = oldName; return; }
+      if(newName === oldName) return;
+      if(CATEGORIES.includes(newName)){ showToast('同じ名前の業種が既にあります'); input.value = oldName; return; }
+      CATEGORIES[CATEGORIES.indexOf(oldName)] = newName;
+      saveCategories();
+      await renameCategoryInVendors(oldName, newName);
+      if(selectedCategoryFilter === oldName) selectedCategoryFilter = newName;
+      showToast('業種名を変更しました');
+      renderCategoryManageList();
+      renderCategoryChips();
+      renderList();
+    });
+  });
+
+  wrap.querySelectorAll('.cat-del').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const cat = btn.dataset.cat;
+      const count = allVendors.filter(v => (v.category || FALLBACK_CATEGORY) === cat).length;
+      const msg = count > 0
+        ? `「${cat}」を削除しますか？この業種を使用している取引先${count}件は「${FALLBACK_CATEGORY}」に変更されます。`
+        : `「${cat}」を削除しますか？`;
+      if(!window.confirm(msg)) return;
+      CATEGORIES = CATEGORIES.filter(c => c !== cat);
+      saveCategories();
+      await renameCategoryInVendors(cat, FALLBACK_CATEGORY);
+      if(selectedCategoryFilter === cat) selectedCategoryFilter = '全て';
+      showToast('削除しました');
+      renderCategoryManageList();
+      renderCategoryChips();
+      renderList();
+    });
+  });
+}
+
+document.getElementById('add-category-btn').addEventListener('click', () => {
+  const input = document.getElementById('new-category-input');
+  const name = input.value.trim();
+  if(!name){ showToast('業種名を入力してください'); return; }
+  if(CATEGORIES.includes(name)){ showToast('同じ名前の業種が既にあります'); return; }
+  CATEGORIES.splice(CATEGORIES.length - 1, 0, name); // 「その他」の手前に追加
+  saveCategories();
+  input.value = '';
+  renderCategoryManageList();
+  renderCategoryChips();
+  showToast('追加しました');
+});
+
+document.getElementById('manage-categories-btn').addEventListener('click', () => {
+  renderCategoryManageList();
+  showView('view-categories');
+});
+document.getElementById('categories-back').addEventListener('click', () => showView('view-list'));
 
 /* ════════════════════════════════════════════════════════════
    起動
