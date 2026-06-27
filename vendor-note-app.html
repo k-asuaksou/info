@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+<title>飛鳥荘 取引先管理ノート</title>
+<style>
+  :root{
+    /* ── 配色トークン(guest-note-appと共通)───────────────
+       生成り(washi) × 藍(indigo) × 朱(hanko vermillion) × 古金(bronze) */
+    --bg:           #efeae0;
+    --bg-soft:      #e6ded0;
+    --surface:      #f8f5ee;
+    --surface-2:    #ece4d2;
+    --ink:          #2b2a28;
+    --ink-soft:     #6b6359;
+    --line:         #d8cdb4;
+    --indigo:       #233e52;
+    --indigo-dark:  #16293a;
+    --indigo-soft:  #3d5b73;
+    --vermillion:   #ab4632;
+    --vermillion-soft: #c97e6b;
+    --gold:         #93783f;
+    --radius-s: 8px;
+    --radius-m: 14px;
+    --radius-l: 22px;
+    --shadow: 0 3px 14px rgba(43,38,32,0.10);
+    --serif: "Hiragino Mincho ProN","YuMincho","Yu Mincho","Noto Serif JP",serif;
+    --sans: "Hiragino Kaku Gothic ProN","Yu Gothic Medium","Yu Gothic","Hiragino Sans",sans-serif;
+  }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{ margin:0; padding:0; }
+  body{
+    background:var(--bg);
+    background-image: radial-gradient(rgba(43,38,32,0.025) 1px, transparent 1px);
+    background-size: 9px 9px;
+    color:var(--ink);
+    font-family:var(--sans);
+    font-size:16px;
+    line-height:1.6;
+    min-height:100vh;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  button{ font-family:inherit; }
+  input,textarea{ font-family:inherit; font-size:16px; }
+
+  /* ── ヘッダー(印譜ロゴ)───────────────────── */
+  header.app-header{
+    position:sticky; top:0; z-index:20;
+    background:var(--indigo);
+    color:#f3ecdc;
+    padding:14px 18px 14px;
+    display:flex; align-items:center; gap:12px;
+    box-shadow:0 2px 10px rgba(0,0,0,0.18);
+  }
+  .hanko{
+    width:42px; height:42px; flex:0 0 auto;
+    border-radius:50%;
+    border:2px solid rgba(243,236,220,.35);
+    background:var(--vermillion);
+    display:flex; align-items:center; justify-content:center;
+    font-family:var(--serif); font-weight:700; font-size:19px; color:#f3ecdc;
+    box-shadow:0 0 0 3px rgba(243,236,220,.08) inset;
+  }
+  .app-title h1{ margin:0; font-family:var(--serif); font-size:17px; font-weight:700; letter-spacing:.02em; }
+  .app-title p{ margin:2px 0 0; font-size:11.5px; color:#cdbfa0; }
+
+  main{ max-width:560px; margin:0 auto; padding:16px 14px 110px; }
+  .view{ display:none; }
+  .view.active{ display:block; }
+
+  /* ── 検索ボックス ───────────────────────── */
+  .search-wrap{ margin-bottom:10px; }
+  .search-box{
+    display:flex; align-items:center; gap:8px;
+    background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-l);
+    padding:10px 14px; box-shadow:var(--shadow);
+  }
+  .search-box svg{ color:var(--ink-soft); flex:0 0 auto; }
+  .search-box input{ flex:1; border:none; background:transparent; outline:none; color:var(--ink); }
+  .search-box input::placeholder{ color:var(--ink-soft); opacity:.7; }
+
+  /* ── フィルターチップ(横スクロール)──────────── */
+  .chip-row{ display:flex; gap:8px; overflow-x:auto; padding:2px 2px 12px; scrollbar-width:none; }
+  .chip-row::-webkit-scrollbar{ display:none; }
+  .chip{
+    flex:0 0 auto; padding:7px 14px; border-radius:999px;
+    border:1px solid var(--line); background:var(--surface); color:var(--ink-soft);
+    font-size:13px; cursor:pointer; white-space:nowrap; transition:.15s;
+  }
+  .chip.selected{ background:var(--indigo); border-color:var(--indigo); color:#f3ecdc; }
+  .chip.star.selected{ background:var(--vermillion); border-color:var(--vermillion); color:#fff; }
+
+  .count-line{ font-size:12px; color:var(--ink-soft); margin:2px 4px 10px; }
+
+  /* ── グループ見出し ─────────────────────── */
+  .group-header{
+    font-family:var(--serif); font-size:13px; font-weight:700; color:var(--indigo);
+    margin:18px 4px 8px; padding-bottom:4px; border-bottom:1px solid var(--line);
+  }
+  .group-header:first-child{ margin-top:2px; }
+  .group-count{ color:var(--ink-soft); font-weight:400; font-size:11.5px; }
+
+  /* ── 取引先カード ───────────────────────── */
+  .vendor-card{
+    display:flex; background:var(--surface); border-radius:var(--radius-m);
+    box-shadow:var(--shadow); margin-bottom:9px; overflow:hidden; border:1px solid var(--line);
+  }
+  .vendor-card .accent{ width:5px; flex:0 0 auto; background:var(--indigo-soft); }
+  .vendor-card.important .accent{ background:var(--vermillion); }
+  .vendor-card-body{ flex:1; padding:12px 14px; min-width:0; }
+  .vendor-card-top{ display:flex; align-items:flex-start; justify-content:space-between; gap:8px; cursor:pointer; }
+  .vendor-card .vname{ font-family:var(--serif); font-size:15.5px; font-weight:700; color:var(--ink); }
+  .vendor-card .vstar{ color:var(--vermillion); font-size:13px; margin-right:2px; }
+  .vendor-card .vcat{
+    display:inline-block; font-size:10.5px; color:var(--indigo); background:var(--surface-2);
+    border-radius:6px; padding:1px 7px; margin-top:5px;
+  }
+  .vendor-card .vmeta{ font-size:12.5px; color:var(--ink-soft); margin-top:7px; display:flex; align-items:center; gap:4px; flex-wrap:wrap; cursor:pointer; }
+  .vendor-card .vphone{ color:var(--indigo); text-decoration:none; font-weight:600; }
+  .vendor-card .vphone:active{ opacity:.6; }
+  .quick-delete{
+    width:26px; height:26px; border-radius:50%; border:none; flex:0 0 auto;
+    background:var(--surface-2); color:var(--ink-soft);
+    display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:13px;
+  }
+
+  /* ── FABボタン ───────────────────────────── */
+  .fab{
+    position:fixed; right:18px; bottom:22px; z-index:30;
+    background:var(--vermillion); color:#fdf8ef; border:none; border-radius:999px;
+    padding:14px 22px; font-size:14.5px; font-weight:700;
+    box-shadow:0 8px 20px rgba(171,70,50,.35);
+    display:flex; align-items:center; gap:7px; cursor:pointer;
+  }
+
+  .empty-state{ text-align:center; padding:50px 20px; color:var(--ink-soft); }
+  .empty-state .big{ font-size:32px; margin-bottom:8px; }
+
+  /* ── フォーム画面 ───────────────────────── */
+  .form-header{ display:flex; align-items:center; gap:10px; margin-bottom:14px; }
+  .back-btn{
+    width:34px; height:34px; border-radius:50%; border:1px solid var(--line);
+    background:var(--surface); display:flex; align-items:center; justify-content:center;
+    cursor:pointer; color:var(--ink); flex:0 0 auto; font-size:16px;
+  }
+  .form-header h2{ font-family:var(--serif); font-size:17px; margin:0; }
+
+  .field{ margin-bottom:16px; }
+  .field label{ display:block; font-size:12.5px; color:var(--ink-soft); margin-bottom:6px; }
+  .field label .req{ color:var(--vermillion); margin-left:4px; font-size:11px; }
+  .field input[type=text], .field input[type=tel], .field input[type=url],
+  .field input[type=email], .field textarea{
+    width:100%; padding:11px 13px; border:1px solid var(--line); border-radius:var(--radius-s);
+    background:var(--surface); color:var(--ink); outline:none;
+  }
+  .field input:focus, .field textarea:focus{ border-color:var(--indigo-soft); }
+  .field textarea{ resize:vertical; min-height:64px; line-height:1.55; }
+  .field-chips{ display:flex; flex-wrap:wrap; gap:8px; }
+
+  .toggle-important{
+    display:flex; align-items:center; gap:10px; padding:12px 14px;
+    border:1px solid var(--line); border-radius:var(--radius-s); background:var(--surface); cursor:pointer;
+  }
+  .toggle-important.on{ border-color:var(--vermillion); background:#f7ece8; }
+  .toggle-important .box{
+    width:20px; height:20px; border-radius:5px; border:2px solid var(--ink-soft); flex:0 0 auto;
+    display:flex; align-items:center; justify-content:center; font-size:12px; color:#fff;
+  }
+  .toggle-important.on .box{ background:var(--vermillion); border-color:var(--vermillion); }
+
+  .btn{
+    display:inline-flex; align-items:center; justify-content:center; gap:6px;
+    padding:12px 18px; border-radius:999px; border:none; cursor:pointer; font-size:14.5px; font-weight:700;
+  }
+  .btn-primary{ background:var(--indigo); color:#f3ecdc; width:100%; }
+  .btn-secondary{ background:var(--surface-2); color:var(--ink); }
+  .btn-danger{ background:transparent; color:var(--vermillion); border:1px solid var(--vermillion-soft); }
+
+  /* ── 詳細画面 ───────────────────────────── */
+  .detail-card{
+    background:var(--surface); border-radius:var(--radius-m); box-shadow:var(--shadow);
+    overflow:hidden; border:1px solid var(--line);
+  }
+  .detail-head{ padding:16px 18px; background:var(--surface-2); }
+  .detail-head .name{ font-family:var(--serif); font-size:19px; font-weight:700; }
+  .detail-head .sub{ font-size:12.5px; color:var(--ink-soft); margin-top:4px; }
+  .detail-row{ padding:13px 18px; border-bottom:1px solid var(--bg-soft); display:flex; gap:14px; }
+  .detail-row:last-child{ border-bottom:none; }
+  .detail-row .k{ width:108px; flex:0 0 auto; font-size:12.5px; color:var(--ink-soft); padding-top:2px; }
+  .detail-row .v{ flex:1; font-size:14.5px; white-space:pre-wrap; word-break:break-word; }
+  .detail-row.alert .v{ color:var(--vermillion); font-weight:600; }
+  .detail-row .v.empty{ color:var(--ink-soft); opacity:.6; }
+  .detail-row .v a{ color:var(--indigo); font-weight:600; text-decoration:none; border-bottom:1px dotted var(--indigo-soft); }
+  .detail-actions{ display:flex; gap:10px; margin-top:14px; }
+
+  /* ── モーダル & トースト ───────────────────── */
+  .modal-overlay{
+    position:fixed; inset:0; background:rgba(22,21,18,0.45); z-index:50;
+    display:flex; align-items:center; justify-content:center; padding:24px;
+  }
+  .modal-overlay.hidden{ display:none; }
+  .modal-box{
+    background:var(--surface); border-radius:var(--radius-m); padding:22px; max-width:340px; width:100%;
+    box-shadow:0 10px 30px rgba(0,0,0,0.25);
+  }
+  .modal-box p{ margin:0 0 18px; font-size:14.5px; }
+  .modal-actions{ display:flex; gap:10px; }
+  .toast{
+    position:fixed; left:50%; bottom:26px; transform:translateX(-50%);
+    background:var(--indigo-dark); color:#f3ecdc; padding:11px 20px; border-radius:99px;
+    font-size:13.5px; z-index:60; box-shadow:0 6px 18px rgba(0,0,0,.3);
+    transition:opacity .25s, transform .25s;
+  }
+  .toast.hidden{ opacity:0; pointer-events:none; transform:translate(-50%,8px); }
+
+  .footnote{ text-align:center; font-size:11px; color:var(--ink-soft); opacity:.7; margin-top:26px; }
+</style>
+</head>
+<body>
+
+<header class="app-header">
+  <div class="hanko">飛</div>
+  <div class="app-title">
+    <h1>飛鳥荘 取引先管理ノート</h1>
+    <p>店舗・業者 連絡先データベース</p>
+  </div>
+</header>
+
+<main>
+
+  <!-- ════════════ 一覧画面 ════════════ -->
+  <section id="view-list" class="view active">
+    <div class="search-wrap">
+      <div class="search-box">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input id="search-input" type="text" placeholder="会社名・担当者・電話番号で検索" autocomplete="off">
+      </div>
+    </div>
+    <div class="chip-row" id="category-chips"></div>
+    <div class="count-line" id="count-line"></div>
+    <div id="list-container"></div>
+  </section>
+
+  <!-- ════════════ 新規登録／編集画面 ════════════ -->
+  <section id="view-form" class="view">
+    <div class="form-header">
+      <button class="back-btn" id="form-back" type="button">←</button>
+      <h2 id="form-title">新規登録</h2>
+    </div>
+    <form id="vendor-form">
+      <div class="field">
+        <label>業種<span class="req">必須</span></label>
+        <div class="field-chips" id="category-select"></div>
+      </div>
+      <div class="field">
+        <label>会社名・屋号<span class="req">必須</span></label>
+        <input type="text" id="f-companyName" placeholder="例）〇〇酒造店">
+      </div>
+      <div class="field">
+        <label>担当者名</label>
+        <input type="text" id="f-contactName" placeholder="例）山田様">
+      </div>
+      <div class="field">
+        <label>電話番号<span class="req">必須</span></label>
+        <input type="tel" id="f-phone" placeholder="例）075-123-4567">
+      </div>
+      <div class="field">
+        <label>携帯電話・直通番号</label>
+        <input type="tel" id="f-mobilePhone" placeholder="例）090-1234-5678">
+      </div>
+      <div class="field">
+        <label>FAX番号</label>
+        <input type="tel" id="f-fax" placeholder="例）075-123-4568">
+      </div>
+      <div class="field">
+        <label>ウェブサイト</label>
+        <input type="url" id="f-website" placeholder="例）example.com">
+      </div>
+      <div class="field">
+        <label>メールアドレス</label>
+        <input type="email" id="f-email" placeholder="例）info@example.com">
+      </div>
+      <div class="field">
+        <label>住所</label>
+        <input type="text" id="f-address" placeholder="例）京都市〇〇区〇〇町1-2-3">
+      </div>
+      <div class="field">
+        <label>営業時間・対応可能時間</label>
+        <input type="text" id="f-businessHours" placeholder="例）平日 9:00〜18:00">
+      </div>
+      <div class="field">
+        <label>発注方法</label>
+        <div class="field-chips" id="orderMethod-select"></div>
+      </div>
+      <div class="field">
+        <label>支払条件・締め日</label>
+        <input type="text" id="f-paymentTerms" placeholder="例）月末締め翌月末払い">
+      </div>
+      <div class="field">
+        <label>特記事項・メモ</label>
+        <textarea id="f-memo" placeholder="対応履歴、注意点、過去のやり取りなど"></textarea>
+      </div>
+      <div class="field">
+        <div class="toggle-important" id="toggle-important">
+          <div class="box">★</div>
+          <div>重要先として登録する（一覧で目立つように表示）</div>
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary">保存する</button>
+    </form>
+  </section>
+
+  <!-- ════════════ 詳細画面 ════════════ -->
+  <section id="view-detail" class="view">
+    <div class="form-header">
+      <button class="back-btn" id="detail-back" type="button">←</button>
+      <h2>取引先詳細</h2>
+    </div>
+    <div class="detail-card" id="detail-card"></div>
+    <div class="detail-actions">
+      <button class="btn btn-secondary" id="detail-edit" style="flex:1;">編集する</button>
+      <button class="btn btn-danger" id="detail-delete" style="flex:1;">削除する</button>
+    </div>
+  </section>
+
+</main>
+
+<button class="fab" id="fab-add" type="button">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+  新規登録
+</button>
+
+<div class="modal-overlay hidden" id="modal-overlay">
+  <div class="modal-box">
+    <p id="modal-text"></p>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="modal-no" style="flex:1;" type="button">キャンセル</button>
+      <button class="btn btn-danger" id="modal-yes" style="flex:1;" type="button">削除する</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast hidden" id="toast"></div>
+
+<p class="footnote">飛鳥荘 取引先管理ノート ー 内部業務用ツール</p>
+
+<script>
+/* ════════════════════════════════════════════════════════════
+   設定
+   ════════════════════════════════════════════════════════════ */
+const CONFIG = {
+  // Google Apps Script のウェブアプリURLをここに貼り付けると、
+  // 全スタッフ・全端末で共有されるGoogleスプレッドシート保存に切り替わります。
+  // 未設定のままならこの端末のブラウザ内保存のみで動作します。
+  SHEETS_API_URL: ''
+};
+
+const CATEGORIES = ['食材','酒類・飲料','クリーニング','設備・メンテナンス','印刷・備品','IT・システム','旅行代理店・OTA','工事・内装','その他'];
+const ORDER_METHODS = ['電話','FAX','メール','Web発注','訪問時に直接'];
+const LOCAL_KEY = 'asukaso_vendor_notes_v1';
+
+/* ════════════════════════════════════════════════════════════
+   DataStore抽象化レイヤー
+   ── 画面側は getAll / add / update / remove の4窓口だけを使う。
+      将来 Supabase 等へ移行する場合も、この内部実装だけを差し替えればよい。
+   ════════════════════════════════════════════════════════════ */
+function readLocal(){ try{ return JSON.parse(localStorage.getItem(LOCAL_KEY) || '[]'); }catch(e){ return []; } }
+function writeLocal(list){ localStorage.setItem(LOCAL_KEY, JSON.stringify(list)); }
+
+async function postSheets(payload){
+  const res = await fetch(CONFIG.SHEETS_API_URL, {
+    method:'POST',
+    headers:{ 'Content-Type':'text/plain;charset=utf-8' }, // プリフライト回避のためtext/plainで送信
+    body: JSON.stringify(payload)
+  });
+  return res.json();
+}
+
+function toBool(v){ return v===true || v==='true' || v==='TRUE' || v===1 || v==='1'; }
+
+const DataStore = {
+  async getAll(){
+    let list;
+    if(CONFIG.SHEETS_API_URL){
+      try{
+        const res = await fetch(CONFIG.SHEETS_API_URL + '?action=getAll');
+        const data = await res.json();
+        list = Array.isArray(data) ? data : (data.notes || []);
+      }catch(e){
+        console.error('スプレッドシート取得エラー', e);
+        list = readLocal();
+      }
+    } else {
+      list = readLocal();
+    }
+    // Googleシートは数値や真偽値を独自の型で返すことがあるため、防御的に整形する
+    return list.map(v => ({ ...v, important: toBool(v.important) }));
+  },
+  async add(note){
+    note.id = 'v_' + Date.now() + '_' + Math.random().toString(36).slice(2,8);
+    note.createdAt = new Date().toISOString();
+    note.updatedAt = note.createdAt;
+    if(CONFIG.SHEETS_API_URL){
+      try{ await postSheets({ action:'add', note }); return note; }catch(e){ console.error(e); }
+    }
+    const all = readLocal(); all.push(note); writeLocal(all);
+    return note;
+  },
+  async update(note){
+    note.updatedAt = new Date().toISOString();
+    if(CONFIG.SHEETS_API_URL){
+      try{ await postSheets({ action:'update', note }); return note; }catch(e){ console.error(e); }
+    }
+    const all = readLocal();
+    const idx = all.findIndex(n => n.id === note.id);
+    if(idx > -1) all[idx] = note;
+    writeLocal(all);
+    return note;
+  },
+  async remove(id){
+    if(CONFIG.SHEETS_API_URL){
+      try{ await postSheets({ action:'delete', id }); return true; }catch(e){ console.error(e); }
+    }
+    const all = readLocal().filter(n => n.id !== id);
+    writeLocal(all);
+    return true;
+  }
+};
+
+/* ════════════════════════════════════════════════════════════
+   状態
+   ════════════════════════════════════════════════════════════ */
+let allVendors = [];
+let selectedCategoryFilter = '全て';
+let starOnlyFilter = false;
+let editingId = null;
+let detailId = null;
+let formCategory = '';
+let formOrderMethods = new Set();
+let formImportant = false;
+let pendingDeleteId = null;
+let toastTimer = null;
+
+/* ════════════════════════════════════════════════════════════
+   ユーティリティ(文字列への防御的変換を徹底)
+   ════════════════════════════════════════════════════════════ */
+function escapeHtml(value){
+  const s = String(value ?? '');
+  return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function toTelHref(phone){
+  const s = String(phone ?? '').trim();
+  if(!s) return '';
+  const cleaned = s.replace(/[^\d+]/g, '');
+  return cleaned ? 'tel:' + cleaned : '';
+}
+function toWebsiteHref(url){
+  let s = String(url ?? '').trim();
+  if(!s) return '';
+  if(!/^https?:\/\//i.test(s)) s = 'https://' + s;
+  return s;
+}
+function matchesSearch(v, q){
+  if(!q) return true;
+  const hay = [v.companyName, v.contactName, v.phone, v.mobilePhone, v.category, v.memo]
+    .map(x => String(x ?? '').toLowerCase()).join(' ');
+  return hay.includes(String(q).toLowerCase());
+}
+function showView(id){
+  document.querySelectorAll('.view').forEach(el => el.classList.toggle('active', el.id === id));
+  window.scrollTo(0, 0);
+}
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.remove('hidden');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.add('hidden'), 2200);
+}
+
+/* ════════════════════════════════════════════════════════════
+   一覧画面
+   ════════════════════════════════════════════════════════════ */
+function renderCategoryChips(){
+  const wrap = document.getElementById('category-chips');
+  const cats = ['全て', ...CATEGORIES];
+  wrap.innerHTML = cats.map(c =>
+    `<button class="chip ${c===selectedCategoryFilter?'selected':''}" data-cat="${escapeHtml(c)}" type="button">${escapeHtml(c)}</button>`
+  ).join('') + `<button class="chip star ${starOnlyFilter?'selected':''}" id="chip-star-filter" type="button">★ 重要先のみ</button>`;
+
+  wrap.querySelectorAll('button[data-cat]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      selectedCategoryFilter = btn.dataset.cat;
+      renderCategoryChips();
+      renderList();
+    });
+  });
+  document.getElementById('chip-star-filter').addEventListener('click', () => {
+    starOnlyFilter = !starOnlyFilter;
+    renderCategoryChips();
+    renderList();
+  });
+}
+
+function renderCard(v){
+  const telHref = toTelHref(v.phone);
+  return `
+  <div class="vendor-card ${v.important?'important':''}">
+    <div class="accent"></div>
+    <div class="vendor-card-body">
+      <div class="vendor-card-top" data-id="${v.id}">
+        <div>
+          <span class="vname">${v.important?'<span class="vstar">★</span>':''}${escapeHtml(v.companyName)}</span>
+          <div class="vcat">${escapeHtml(v.category || 'その他')}</div>
+        </div>
+        <button class="quick-delete" data-id="${v.id}" type="button" title="削除">✕</button>
+      </div>
+      <div class="vmeta" data-id="${v.id}">
+        ${v.contactName ? `<span>${escapeHtml(v.contactName)}　</span>` : ''}
+        ${telHref ? `<a class="vphone" href="${telHref}">📞 ${escapeHtml(v.phone)}</a>` : ''}
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderList(){
+  const q = document.getElementById('search-input').value.trim();
+  let items = allVendors.filter(v => matchesSearch(v, q));
+  if(selectedCategoryFilter !== '全て') items = items.filter(v => (v.category || 'その他') === selectedCategoryFilter);
+  if(starOnlyFilter) items = items.filter(v => v.important);
+
+  document.getElementById('count-line').textContent = `全 ${items.length} 件`;
+  const container = document.getElementById('list-container');
+
+  if(items.length === 0){
+    container.innerHTML = `<div class="empty-state"><div class="big">📇</div><p>該当する取引先が見つかりません。<br>右下の「＋新規登録」から登録してください。</p></div>`;
+    return;
+  }
+
+  const groups = {};
+  items.forEach(v => {
+    const cat = v.category || 'その他';
+    (groups[cat] = groups[cat] || []).push(v);
+  });
+  Object.values(groups).forEach(arr => {
+    arr.sort((a, b) => {
+      const diff = (b.important ? 1 : 0) - (a.important ? 1 : 0);
+      if(diff !== 0) return diff;
+      return String(a.companyName || '').localeCompare(String(b.companyName || ''), 'ja');
+    });
+  });
+
+  const orderedCats = CATEGORIES.filter(c => groups[c]);
+  Object.keys(groups).forEach(c => { if(!orderedCats.includes(c)) orderedCats.push(c); });
+
+  container.innerHTML = orderedCats.map(cat => `
+    <div class="group-header">${escapeHtml(cat)} <span class="group-count">(${groups[cat].length})</span></div>
+    ${groups[cat].map(renderCard).join('')}
+  `).join('');
+
+  container.querySelectorAll('.vendor-card-top, .vmeta').forEach(el => {
+    el.addEventListener('click', (e) => {
+      if(e.target.closest('.quick-delete') || e.target.closest('a')) return;
+      openDetail(el.dataset.id);
+    });
+  });
+  container.querySelectorAll('.quick-delete').forEach(el => {
+    el.addEventListener('click', (e) => { e.stopPropagation(); confirmDeleteFlow(el.dataset.id); });
+  });
+}
+
+async function refreshAndRenderList(){
+  document.getElementById('list-container').innerHTML =
+    '<p style="text-align:center;color:var(--ink-soft);padding:30px 0;">読み込み中…</p>';
+  allVendors = await DataStore.getAll();
+  renderList();
+}
+
+document.getElementById('search-input').addEventListener('input', renderList);
+document.getElementById('fab-add').addEventListener('click', () => openNewForm());
+
+/* ════════════════════════════════════════════════════════════
+   詳細画面
+   ════════════════════════════════════════════════════════════ */
+function detailRow(label, value, alert){
+  const has = value !== undefined && value !== null && String(value).trim() !== '';
+  return `<div class="detail-row ${alert ? 'alert' : ''}">
+    <div class="k">${escapeHtml(label)}</div>
+    <div class="v ${has ? '' : 'empty'}">${has ? escapeHtml(value) : '記載なし'}</div>
+  </div>`;
+}
+function detailRowTel(label, value){
+  const has = value !== undefined && value !== null && String(value).trim() !== '';
+  const href = has ? toTelHref(value) : '';
+  return `<div class="detail-row">
+    <div class="k">${escapeHtml(label)}</div>
+    <div class="v ${has ? '' : 'empty'}">${has ? `<a href="${href}">${escapeHtml(value)}</a>` : '記載なし'}</div>
+  </div>`;
+}
+function detailRowWebsite(label, value){
+  const has = value !== undefined && value !== null && String(value).trim() !== '';
+  const href = has ? toWebsiteHref(value) : '';
+  return `<div class="detail-row">
+    <div class="k">${escapeHtml(label)}</div>
+    <div class="v ${has ? '' : 'empty'}">${has ? `<a href="${href}" target="_blank" rel="noopener">${escapeHtml(value)}</a>` : '記載なし'}</div>
+  </div>`;
+}
+function detailRowMail(label, value){
+  const has = value !== undefined && value !== null && String(value).trim() !== '';
+  return `<div class="detail-row">
+    <div class="k">${escapeHtml(label)}</div>
+    <div class="v ${has ? '' : 'empty'}">${has ? `<a href="mailto:${escapeHtml(value)}">${escapeHtml(value)}</a>` : '記載なし'}</div>
+  </div>`;
+}
+
+function openDetail(id){
+  const v = allVendors.find(x => x.id === id);
+  if(!v) return;
+  detailId = id;
+
+  document.getElementById('detail-card').innerHTML = `
+    <div class="detail-head">
+      <div class="name">${v.important ? '★ ' : ''}${escapeHtml(v.companyName)}</div>
+      <div class="sub">${escapeHtml(v.category || 'その他')}${v.contactName ? '・ご担当：' + escapeHtml(v.contactName) : ''}</div>
+    </div>
+    ${detailRowTel('電話番号', v.phone)}
+    ${detailRowTel('携帯電話・直通', v.mobilePhone)}
+    ${detailRowTel('FAX番号', v.fax)}
+    ${detailRowWebsite('ウェブサイト', v.website)}
+    ${detailRowMail('メールアドレス', v.email)}
+    ${detailRow('住所', v.address)}
+    ${detailRow('営業時間・対応可能時間', v.businessHours)}
+    ${detailRow('発注方法', v.orderMethod)}
+    ${detailRow('支払条件・締め日', v.paymentTerms)}
+    ${detailRow('特記事項・メモ', v.memo, !!v.important && !!v.memo)}
+  `;
+  showView('view-detail');
+}
+
+document.getElementById('detail-back').addEventListener('click', () => showView('view-list'));
+document.getElementById('detail-edit').addEventListener('click', () => { if(detailId) openEditForm(detailId); });
+document.getElementById('detail-delete').addEventListener('click', () => { if(detailId) confirmDeleteFlow(detailId); });
+
+/* ════════════════════════════════════════════════════════════
+   削除確認モーダル
+   ════════════════════════════════════════════════════════════ */
+function confirmDeleteFlow(id){
+  pendingDeleteId = id;
+  const v = allVendors.find(x => x.id === id);
+  document.getElementById('modal-text').textContent =
+    `「${v ? v.companyName : 'この取引先'}」を削除しますか？この操作は取り消せません。`;
+  document.getElementById('modal-overlay').classList.remove('hidden');
+}
+document.getElementById('modal-no').addEventListener('click', () => {
+  pendingDeleteId = null;
+  document.getElementById('modal-overlay').classList.add('hidden');
+});
+document.getElementById('modal-yes').addEventListener('click', async () => {
+  if(!pendingDeleteId) return;
+  const id = pendingDeleteId;
+  document.getElementById('modal-overlay').classList.add('hidden');
+  await DataStore.remove(id);
+  showToast('削除しました');
+  await refreshAndRenderList();
+  if(detailId === id){ detailId = null; showView('view-list'); }
+});
+
+/* ════════════════════════════════════════════════════════════
+   新規登録／編集フォーム
+   ════════════════════════════════════════════════════════════ */
+function renderCategorySelectChips(){
+  const wrap = document.getElementById('category-select');
+  wrap.innerHTML = CATEGORIES.map(c =>
+    `<button type="button" class="chip ${formCategory===c?'selected':''}" data-cat="${escapeHtml(c)}">${escapeHtml(c)}</button>`
+  ).join('');
+  wrap.querySelectorAll('button').forEach(btn => {
+    btn.addEventListener('click', () => { formCategory = btn.dataset.cat; renderCategorySelectChips(); });
+  });
+}
+function renderOrderMethodChips(){
+  const wrap = document.getElementById('orderMethod-select');
+  wrap.innerHTML = ORDER_METHODS.map(m =>
+    `<button type="button" class="chip ${formOrderMethods.has(m)?'selected':''}" data-m="${escapeHtml(m)}">${escapeHtml(m)}</button>`
+  ).join('');
+  wrap.querySelectorAll('button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const m = btn.dataset.m;
+      if(formOrderMethods.has(m)) formOrderMethods.delete(m); else formOrderMethods.add(m);
+      renderOrderMethodChips();
+    });
+  });
+}
+document.getElementById('toggle-important').addEventListener('click', () => {
+  formImportant = !formImportant;
+  document.getElementById('toggle-important').classList.toggle('on', formImportant);
+});
+
+function clearFormFields(){
+  ['companyName','contactName','phone','mobilePhone','fax','website','email','address','businessHours','paymentTerms','memo']
+    .forEach(f => { document.getElementById('f-' + f).value = ''; });
+}
+
+function openNewForm(){
+  editingId = null;
+  formCategory = CATEGORIES[0];
+  formOrderMethods = new Set();
+  formImportant = false;
+  document.getElementById('form-title').textContent = '新規登録';
+  clearFormFields();
+  document.getElementById('toggle-important').classList.remove('on');
+  renderCategorySelectChips();
+  renderOrderMethodChips();
+  showView('view-form');
+}
+
+function openEditForm(id){
+  const v = allVendors.find(x => x.id === id);
+  if(!v) return;
+  editingId = id;
+  formCategory = v.category || CATEGORIES[0];
+  formOrderMethods = new Set(String(v.orderMethod || '').split(/[、,]/).map(s => s.trim()).filter(Boolean));
+  formImportant = !!v.important;
+
+  document.getElementById('form-title').textContent = '編集する';
+  document.getElementById('f-companyName').value = v.companyName || '';
+  document.getElementById('f-contactName').value = v.contactName || '';
+  document.getElementById('f-phone').value = v.phone || '';
+  document.getElementById('f-mobilePhone').value = v.mobilePhone || '';
+  document.getElementById('f-fax').value = v.fax || '';
+  document.getElementById('f-website').value = v.website || '';
+  document.getElementById('f-email').value = v.email || '';
+  document.getElementById('f-address').value = v.address || '';
+  document.getElementById('f-businessHours').value = v.businessHours || '';
+  document.getElementById('f-paymentTerms').value = v.paymentTerms || '';
+  document.getElementById('f-memo').value = v.memo || '';
+  document.getElementById('toggle-important').classList.toggle('on', formImportant);
+
+  renderCategorySelectChips();
+  renderOrderMethodChips();
+  showView('view-form');
+}
+
+document.getElementById('form-back').addEventListener('click', () => {
+  showView(editingId ? 'view-detail' : 'view-list');
+});
+
+document.getElementById('vendor-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const companyName = document.getElementById('f-companyName').value.trim();
+  const phone = document.getElementById('f-phone').value.trim();
+  if(!companyName){ showToast('会社名・屋号を入力してください'); return; }
+  if(!phone){ showToast('電話番号を入力してください'); return; }
+  if(!formCategory){ showToast('業種を選択してください'); return; }
+
+  const payload = {
+    category: formCategory,
+    companyName,
+    contactName: document.getElementById('f-contactName').value.trim(),
+    phone,
+    mobilePhone: document.getElementById('f-mobilePhone').value.trim(),
+    fax: document.getElementById('f-fax').value.trim(),
+    website: document.getElementById('f-website').value.trim(),
+    email: document.getElementById('f-email').value.trim(),
+    address: document.getElementById('f-address').value.trim(),
+    businessHours: document.getElementById('f-businessHours').value.trim(),
+    orderMethod: Array.from(formOrderMethods).join('、'),
+    paymentTerms: document.getElementById('f-paymentTerms').value.trim(),
+    memo: document.getElementById('f-memo').value.trim(),
+    important: formImportant
+  };
+
+  if(editingId){
+    payload.id = editingId;
+    await DataStore.update(payload);
+    showToast('更新しました');
+  } else {
+    await DataStore.add(payload);
+    showToast('登録しました');
+  }
+  await refreshAndRenderList();
+  showView('view-list');
+});
+
+/* ════════════════════════════════════════════════════════════
+   起動
+   ════════════════════════════════════════════════════════════ */
+renderCategoryChips();
+refreshAndRenderList();
+</script>
+</body>
+</html>
